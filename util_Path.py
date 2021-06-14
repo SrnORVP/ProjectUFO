@@ -273,11 +273,11 @@ def get_relative_path(path, levels=4):
     temp = os.path.join(path, *list([os.pardir]*levels))
     return os.path.relpath(path, temp)
 
-def stylized_script_start(script_end: str):
-    print(Style.BGD_WHT + Style.CAUTION + f' "{script_end}" '.center(80, '*') + Style.ENDD)
+def stylized_print1(string_input: str):
+    print(Style.BGD_WHT + Style.BLACK + f' {string_input} '.center(80, '*') + Style.ENDD)
 
-def stylized_script_end(script_end: str):
-    print(Style.BGD_BLK + Style.WHITE + f' "{script_end}" Done '.center(80, '*') + Style.ENDD)
+def stylized_print2(string_input: str):
+    print(Style.BGD_WHT + Style.CAUTION + f' {string_input} '.center(80, '*') + Style.ENDD)
 
 
 if __name__ == '__main__':
