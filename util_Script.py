@@ -7,106 +7,165 @@ import util_Path as UP
 
 
 class ScriptSequence:
-    check = ['PROJ_ID', 'FLOW_ID', 'STEP_ID']
+    EXT = '.xlsx'
+    INDEX = 'index'
+    LITERALs = ['STEP_ID', 'PARAM']
+    UKEYs = ['PROJ_ID', 'FLOW_ID', 'STEP_ID']
 
-    def __init__(self, **kwargs):
-        self.path = None
-        self.name = None
-        self.sequence = None
-        self.seq_attr = kwargs
+    def __init__(self, path, name, sequence=None, **kwargs):
+        self._df_index = None
+        self._attr_dict = None
+        self._seq = dict()
+        self._path = ''
+        self._name = ''
+        self._pathname = ''
+        self.path = path
+        self.name = name
+        self.sequence = sequence
+        kwargs.update(self.__dict__)
+        self.__dict__ = kwargs
 
     @property
-    def seq_attr(self):
-        return self.seq_attr
+    def path(self):
+        return self._path
 
     @property
-    def _refresh(self):
-        return self._inputs
+    def name(self):
+        return self._name
 
-    @seq_attr.setter
-    def seq_attr(self, kwargs):
-        # set if self have no path or new path is provided
-        path = kwargs.get('path', None)
-        name = kwargs.get('name', None)
-        sequence = kwargs.get('sequence', None)
+    @property
+    def pathname(self):
+        return self._pathname
 
-        # loading excel based on path and name pair
-        self.path = path if not self.path or path else self.path
-        if not self.name or name:
-            self.name, _ = os.path.splitext(name)
-        if path or name:
-            self._pathname = UP.Get_Specific_File_Name(self.name, '.xlsx', [self.path], verbose=False)
-            self._refresh = True
+    @path.setter
+    def path(self, value):
+        if value and value != self._path:
+            self._path = value
+            self.pathname = find_specific_file_name(self._name, ScriptSequence.EXT, value, verbose=False)
 
+    @name.setter
+    def name(self, value):
+        temp, _ = os.path.splitext(value)
+        if value and temp != self._name:
+            self._name = value
+            self.pathname = find_specific_file_name(value, ScriptSequence.EXT, self._path, verbose=False)
+
+    @pathname.setter
+    def pathname(self, value):
+        if value and value != self._pathname and self._name and self._path:
+            self._pathname = value
+            print('Pathname loaded')
+            self._update_source = True
+    # ------------------------------------------------------------------------------------------------------------------
+
+    @property
+    def sequence(self):
+        return self._seq
+
+    @sequence.setter
+    def sequence(self, value):
         # direct assignment will overwrite loading from path
-        self.sequence = sequence if not isinstance(self.sequence, dict) or sequence else self.sequence
+        if value and value != self._seq:
+            self._seq = value
+    # ------------------------------------------------------------------------------------------------------------------
 
-    @_refresh.setter
-    def _refresh(self, value):
+    @property
+    def _update_source(self):
+        return self._update_source
+
+    @ _update_source.setter
+    def _update_source(self, value):
+        # Load from excel for pathname and set attr_dict and index
         if value:
-            self._load_sequence_source('SCRIPT')
-            self._load_sequence_source('INPUTS')
-            self._load_sequence_source('OUTPUT')
-            self.INDEX = self.SCRIPT.loc[:, ['index'] + ScriptSequence.check].set_index('index')
-            self._check_sequence_source('SCRIPT')
-            self._check_sequence_source('INPUTS')
-            self._check_sequence_source('OUTPUT')
-            self._parse_literal('SCRIPT', 'PARAM')
-            self._parse_sequence_paths('INPUTS')
-            self._parse_sequence_paths('OUTPUT')
-            self._parse_literal('INDEX', 'STEP_ID')
+            import pandas as pd
+            df = pd.read_excel(self._pathname, sheet_name=0, dtype=str, index_col=None)
+            self.index = ScriptSequence.parse_literal_columns(df)
+            df_dict = pd.read_excel(self._pathname, sheet_name=None, dtype=str, index_col=None)
+            self._attr_dict = {k: ScriptSequence.parse_literal_columns(v) for k, v in df_dict.items()}
+            print('Source file loaded')
+            self._parse_source = True
+    # ------------------------------------------------------------------------------------------------------------------
+
+    @property
+    def index(self):
+        return self._df_index
+
+    @property
+    def _parse_source(self):
+        return self._parse_source
+
+    @index.setter
+    def index(self, value):
+        if value is not None:
+            temp = value.loc[:, [ScriptSequence.INDEX] + ScriptSequence.UKEYs]
+            self._df_index = temp.set_index(ScriptSequence.INDEX)
+
+    @_parse_source.setter
+    def _parse_source(self, value):
+        if value is not None:
+            # parse DataFrames from imported by pathname
+            self._parse_attr()
+            # get dicts from DataFrames
+            self._df_index = self._df_index.to_dict('index')
+            self._df_SCRIPT = self._df_SCRIPT.to_dict('index')
+            self._get_path_dicts('_df_INPUTS')
+            self._get_path_dicts('_df_OUTPUT')
+            # get dicts from DataFrames
             self._combine_sequence()
-            self._refresh = False
+            print('Source file parsed')
+            self._attr_dict = None
+    # ------------------------------------------------------------------------------------------------------------------
 
-    def _load_sequence_source(self, attr_name):
-        import pandas as pd
-        # Load from excel for each attr_name and set attr based on attr_name
-        attr_value = pd.read_excel(self._pathname, sheet_name=attr_name, dtype=str, index_col=None)
-        self.__setattr__(attr_name, attr_value)
-
-    def _check_sequence_source(self, attr_name):
+    def _parse_attr(self):
         # Get attr based on based on attr_name, check if consistent and remove redundant columns
-        check = ScriptSequence.check
-        attr_value = self.__getattribute__(attr_name)
-        attr_value = attr_value.set_index('index')
-        assert (self.INDEX.loc[:, check] == attr_value.loc[:, check]).all().all()
-        attr_value = attr_value.drop(columns=check)
-        self.__setattr__(attr_name, attr_value)
+        for attr_name, attr_value in self._attr_dict.items():
+            attr_value = attr_value.set_index(ScriptSequence.INDEX)
+            if self._check_index(attr_value):
+                attr_value = attr_value.drop(columns=ScriptSequence.UKEYs)
+                self.__setattr__('_df_' + attr_name, attr_value)
+        self._keys = ['_df_' + e for e in self._attr_dict.keys()]
 
-    def _parse_sequence_paths(self, attr_name):
+    def _check_index(self, value):
+        if self._df_index is not None:
+            temp = (self._df_index.loc[:, ScriptSequence.UKEYs] == value.loc[:, ScriptSequence.UKEYs])
+            return temp.all().all()
+        else:
+            return True
+
+    def _get_path_dicts(self, attr_name):
         # Get attr based on based on attr_name, obtain {'main': {'NAME': XXX, 'PATH': XXX}}
         # instead of {'main_NAME': XXX, 'main_PATH': XXX}
         attr_value = self.__getattribute__(attr_name)
         attr_value.columns = pd.MultiIndex.from_tuples(tuple(attr_value.columns.str.split('_')))
-        attr_value = attr_value.stack(0)
-        attr_value = attr_value.to_dict('index')
+        attr_value = attr_value.stack(0).to_dict('index')
         temp = dict()
         for (k1, k2), v in attr_value.items():
             temp.setdefault(k1, dict())
             temp[k1].update({k2: v})
-        attr_value = temp
-        self.__setattr__(attr_name, attr_value)
+        self.__setattr__(attr_name, temp)
 
-    def _parse_literal(self, attr_name, col_name):
-        attr_value = self.__getattribute__(attr_name)
-        attr_value[col_name] = attr_value[col_name].apply(lambda x: literal_eval(x))
-        self.__setattr__(attr_name, attr_value)
+    @staticmethod
+    def parse_literal_columns(dataframe):
+        labels = dataframe.columns.to_list()
+        labels = [e for e in labels if e in ScriptSequence.LITERALs]
+        for e in labels:
+            dataframe[e] = dataframe[e].apply(lambda x: literal_eval(x))
+        return dataframe
 
     def _combine_sequence(self):
-        self.INDEX = self.INDEX.to_dict('index')
-        self.SCRIPT = self.SCRIPT.to_dict('index')
-        self.sequence = dict()
-        for k, v in self.INDEX.items():
-            self.sequence[k] = dict(INDEX=self.INDEX[k], SCRIPT=self.SCRIPT[k],
-                                    INPUTS=self.INPUTS[k], OUTPUT=self.OUTPUT[k])
+        self._seq = dict()
+        for k, v in self._df_index.items():
+            self._seq[k] = dict(INDEX=self._df_index[k], SCRIPT=self._df_SCRIPT[k],
+                                INPUTS=self._df_INPUTS[k], OUTPUT=self._df_OUTPUT[k])
 
     def ppcheck(self):
-        for k, v in self.sequence.items():
+        for k, v in self._seq.items():
             print(k)
             pp(v)
 
     def execute(self, runtime_object):
-        for k, v in self.sequence.items():
+        for k, v in self._seq.items():
+            UP.stylized_print2(f' SEQUENCE ID: {k}')
             runtime_object.ID = k
             runtime_object.PARAM = v
             runtime_object.execute()
@@ -152,7 +211,7 @@ class ScriptRunTime:
     def _parse_runtime_index(self, attr_name, kwargs):
         attr_value = kwargs[attr_name].copy()
         indexes = map(str, list(kwargs[attr_name].values()))
-        self.RT_ID = '_'.join(indexes)
+        self.RT_ID = '\''.join(indexes)
         attr_value.update({'RT_ID': self.RT_ID})
         self.__setattr__(attr_name, attr_value)
 
@@ -193,6 +252,9 @@ class ScriptRunTime:
 
             UP.stylized_print1(f'"{self.RT_ID}: {name}" Start')
 
+            print(UP.Style.UDLBLD + 'Listing script param(s)' + UP.Style.END + ':')
+            pp(self.SCRIPT['PARAM'])
+            print()
             self.MODULE.PROJ_PARAMS = self.SCRIPT['PARAM']
             self.MODULE.PROJ_INPUTS = self.INPUTS
             self.MODULE.PROJ_OUTPUT = self.OUTPUT

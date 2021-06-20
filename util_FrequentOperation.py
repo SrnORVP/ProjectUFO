@@ -483,16 +483,31 @@ class DataFrameDict(dict):
             except KeyError:
                 continue
 
-    def iter_func(self, func, labels=None, verbose=False, *args, **kwargs):
+    def iter_func(self, func, axis=None, sheets=None, labels=None, verbose=False, *args, **kwargs):
         if verbose:
-            print(f'Applying func "{func.__name__}" on DataFrameDict with {kwargs}')
+            string_kwargs = kwargs if kwargs else 'No kwargs'
+            print(f'Applying func "{func.__name__}" on DataFrameDict with "{string_kwargs}"')
         for k, v in self.items():
-            if verbose:
-                print(f'Applying to Tab: {k}')
-            if labels:
-                self[k] = func(v.loc[:, labels], *args, **kwargs)
-            else:
-                self[k] = func(v, *args, **kwargs)
+            if sheets and k not in sheets:
+                continue
+            if not axis:
+                if labels:
+                    labels_found = [e for e in v.columns.to_list() if e in labels]
+                    if verbose:
+                        print(f'Applying to Tab: {k} with labels "{labels_found}"')
+                    v = func(v.loc[:, labels_found], *args, **kwargs)
+                else:
+                    if verbose:
+                        print(f'Applying to Tab: {k}')
+                    v = func(v, *args, **kwargs)
+            # else:
+            #     if axis == 1:
+            #         print(v.columns)
+            #         v.columns = func(v.columns, *args, **kwargs)
+            #         print(v.columns)
+            #     elif axis == 0:
+            #         v.index = func(v.index, *args, **kwargs)
+            self[k] = v
 
     def iter_decorator(self, func, verbose=False, *args, **kwargs):
         # TODO
@@ -535,7 +550,7 @@ class DataFrameDict(dict):
             return pd.DataFrame([*itt.zip_longest(*[*head_generator])], columns=key_List)
 
         if axis in [0, 'index']:
-            temp = zip_longest_head((v.index.to_list() for v in self.values()))
+            temp = zip_longest_head((v._df_index.to_list() for v in self.values()))
         else:
             temp = zip_longest_head((v.columns.to_list() for v in self.values())).T
         if melting:
@@ -566,8 +581,6 @@ class DataFrameDict(dict):
 # ----------------------------------------------------------------------------------------------------------------------
 
 
-
-
 def rename_MultiIndexDF(dictMapper, dfInput):
     dfInput.columns = dfInput.columns.to_flat_index()
     return dfInput.rename(columns=dictMapper)
@@ -578,12 +591,15 @@ def add_Suffix_DFcolumns(dfInput, strSuffix):
     dfInput.columns = dfInput.columns.str.replace(strSuffix + strSuffix, strSuffix)
     return dfInput
 
+
 def assign_Default_Values(dfInput, dictValue):
     return dfInput.assign(**dictValue)
+
 
 def set_dtype(dfInput, datatype):
     _ = [dfInput[strCol].astype(datatype) for strCol in dfInput.columns]
     return dfInput
+
 
 def Get_Rolling_Duplicate(dfInput, strKey, strName):
     def Count_Rolling_Duplicate(srsGrouped):
@@ -592,9 +608,10 @@ def Get_Rolling_Duplicate(dfInput, strKey, strName):
             lstCount.append(dictElem.setdefault(Elem, 0))
             dictElem[Elem] += 1
         return pd.Series(lstCount, index=srsGrouped, name=strName)
-    return dfInput.groupby(by=dfInput.index, sort=False).apply(lambda x: Count_Rolling_Duplicate(x[strKey]))
+    return dfInput.groupby(by=dfInput._df_index, sort=False).apply(lambda x: Count_Rolling_Duplicate(x[strKey]))
 
 # ----------------------------------------------------------------------------------------------------------------------
+
 
 def join_MultiRows(series, delimiter=', ', drop=True, dropna=False, na_repl='-'):
     if drop:
@@ -624,32 +641,7 @@ def contains_Any_Listed_Values(srsInput, lstValue):
     # return dfContains
     return dfContains.any(axis=1)
 
-# def putStructureByMapper()
-# dictStructure = {'SIF':'^SIF: ', 'name_SIF':'^$', 'PTI':'^Test intervals', 'END': 'Summary Information'}
-# strReg = '(?:SIF:\s+)((?:\[[\w\-]+\]){1}(?:\s?\[\w+\]){0,2})'
-# dictExtract = {'name_SIF': strReg}
-#     dfSRS['Struct'] = pd.Series(np.nan, index=dfSRS.index, dtype='str')
-#     display(dfSRS['Struct'].value_counts())
-#     for k, v in dictStructure.items():
-#         srsTemp = pd.Series(k, index=dfSRS.index).where(dfSRS.iloc[:, 0].str.contains(v, regex=True))
-#         dfSRS['Struct'] = dfSRS['Struct'].fillna(srsTemp)
-#         try:
-#             dfSRS[k] = dfSRS.iloc[:, 0].str.extract(dictExtract[k])
-#         except KeyError:
-#             continue
-#     dfSRS.loc[:, ['Struct', *dictExtract.keys()]] = dfSRS.loc[:, ['Struct', *dictExtract.keys()]].fillna(method='pad')
 
-
-# TODO DataFrame operation
-
-# TODO Pivot operation
-
-# TODO Import Operation
-
-# TODO Pivot operation
-#  - Melt (columns become generic or does not override)
-
-# ----------------------------------------------------------------------------------------------------------------------
 # ----------------------------------------------------------------------------------------------------------------------
 
 def get_ColRename_Mapper(dfInput, lstKeyCols, strValCol):

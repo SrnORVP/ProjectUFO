@@ -41,6 +41,14 @@ class Style:
             print(a, '\033[' + str(a) + 'm' + string + self.END)
 
 
+def stylized_print1(string_input: str):
+    print(Style.BGD_WHT + Style.BLACK + f' {string_input} '.center(80, '*') + Style.ENDD)
+
+
+def stylized_print2(string_input: str):
+    print(Style.BGD_WHT + Style.CAUTION + f' {string_input} '.center(80, '*') + Style.ENDD)
+
+
 def get_file_list(target_path: list, target_extension: str, target_file_hint: str = None) -> list:
     temp = []
     files = os.listdir(os.path.join(*target_path))
@@ -199,42 +207,6 @@ def check_file_path_exist(path: str, create: bool = True):
         print(f'Dir not found, now created: {path}')
 
 
-def get_script_IO(IO_Workflows: dict, IO_Paths: dict, IO_Params: dict,
-                  script_name: str, script_state: int, prefix='', **kwargs) -> tuple or str:
-    pass
-    # file_iput = IO_Workflows[script_name][script_state]
-    # file_oput = IO_Workflows[script_name][script_state + 1]
-    #
-    # main, main_ext = os.path.splitext(file_iput['main'])
-    # print(f'Input File[0] ID: "{main}" with extension "{main_ext}".')
-    # main = Get_Specific_File_Name(main, main_ext, IO_Paths[main], isRequired=True)
-    # print()
-    #
-    # supp = None
-    # if file_iput['supp']:
-    #     supp, supp_ext = os.path.splitext(file_iput['supp'])
-    #     print(f'Input File[1] ID: "{supp}" with extension "{supp_ext}".')
-    #     supp = Get_Specific_File_Name(supp, supp_ext, IO_Paths[supp], isRequired=False)
-    #     print()
-    #
-    # path_iput = [main, supp]
-    #
-    # oput, oput_ext = os.path.splitext(file_oput['main'])
-    # oput_path=IO_Paths[oput]
-    # print(f'Output File ID: "{oput}" with extension "{oput_ext}".')
-    # oput_join = os.path.join(*oput_path)
-    # path_oput = get_output_name(oput_join, oput, oput_ext, prefix)
-    # print(f'File "{path_oput}" will be created.\n')
-    #
-    # delete_similar_outputs(oput_join, oput, oput_ext)
-    #
-    # script_param = IO_Params[script_name]
-    # print(f'Project Parameters for "{script_name}" at state "{script_state}" loaded:')
-    # pp(script_param, compact=True)
-    #
-    # return path_iput, path_oput, script_param
-
-
 def get_dict_IO(IO_Workflows: dict, IO_Paths: dict, IO_Params: dict,
                       script_name: str, script_state: int, prefix='', **kwargs) -> dict or str:
 
@@ -272,12 +244,6 @@ def get_dict_IO(IO_Workflows: dict, IO_Paths: dict, IO_Params: dict,
 def get_relative_path(path, levels=4):
     temp = os.path.join(path, *list([os.pardir]*levels))
     return os.path.relpath(path, temp)
-
-def stylized_print1(string_input: str):
-    print(Style.BGD_WHT + Style.BLACK + f' {string_input} '.center(80, '*') + Style.ENDD)
-
-def stylized_print2(string_input: str):
-    print(Style.BGD_WHT + Style.CAUTION + f' {string_input} '.center(80, '*') + Style.ENDD)
 
 
 if __name__ == '__main__':
