@@ -4,12 +4,16 @@ import builtins
 
 
 class Style:
+    COUNT = 84
+    FILL = '#'
     PURPLE = '\033[95m'
     CYAN = '\033[96m'
-    WHITE = '\033[97m'
     DARKCYAN = '\033[36m'
+    WHITE = '\033[97m'
     BLUE = '\033[94m'
+    DARKBLUE = '\033[34m'
     GREEN = '\033[92m'
+    DARKGREEN = '\033[32m'
     YELLOW = '\033[93m'
     BLACK = '\033[30m'
     RED = '\033[91m'
@@ -41,12 +45,28 @@ class Style:
             print(a, '\033[' + str(a) + 'm' + string + self.END)
 
 
-def stylized_print1(string_input: str):
-    print(Style.BGD_WHT + Style.BLACK + f' {string_input} '.center(80, '*') + Style.ENDD)
+def stylized_print_black(string_input: str):
+    print(Style.BGD_WHT + Style.BLACK + f' {string_input} '.center(Style.COUNT, Style.FILL) + Style.ENDD)
 
 
-def stylized_print2(string_input: str):
-    print(Style.BGD_WHT + Style.CAUTION + f' {string_input} '.center(80, '*') + Style.ENDD)
+def stylized_print_caution(string_input: str):
+    print(Style.BGD_WHT + Style.CAUTION + f' {string_input} '.center(Style.COUNT, Style.FILL) + Style.ENDD)
+
+
+def stylized_print_green(string_input: str):
+    print(Style.BGD_WHT + Style.DARKGREEN + f' {string_input} '.center(Style.COUNT, Style.FILL) + Style.ENDD)
+
+
+def stylized_print_cyan(string_input: str):
+    print(Style.BGD_WHT + Style.DARKCYAN + f' {string_input} '.center(Style.COUNT, Style.FILL) + Style.ENDD)
+
+
+def stylized_print_blue(string_input: str):
+    print(Style.BGD_WHT + Style.DARKBLUE + f' {string_input} '.center(Style.COUNT, Style.FILL) + Style.ENDD)
+
+
+def stylized_print_section(string_input1: str, string_input2: str):
+    print(Style.UDLBLD + string_input1 + Style.END + string_input2)
 
 
 def get_file_list(target_path: list, target_extension: str, target_file_hint: str = None) -> list:
@@ -102,7 +122,7 @@ def Check_Excel_Exist(arrTargetPath, strTargetFileName):
         strTemp = 0
         sys.exit()
     else:
-        print(f'File found: "{get_relative_path(strTemp)}"')
+        print(f'File found: "{get_rel_path(strTemp)}"')
     return strTemp
 
 
@@ -127,7 +147,7 @@ def Get_Specific_File_Name(file_target, ext_target, path_target=['.'], compulsor
     if intCounts == 1:
         strPathOP = strTemp
         if verbose:
-            print(f'File found: "{get_relative_path(strPathOP)}"')
+            print(f'File found: "{get_rel_path(strPathOP)}"')
         return strPathOP
     elif compulsory:
         if intCounts == 0:
@@ -145,34 +165,6 @@ def Get_Specific_File_Name(file_target, ext_target, path_target=['.'], compulsor
 
 def print_Status(strScript, strPath):
     print(f'{strScript} is being ran on {strPath}.\n')
-
-
-def get_file_IO(io_state: int, io_folder_list: list, io_file_list: list):
-    import util_Date as UD
-    file_input = io_file_list[io_state]
-    path_input = []
-    try:
-        file_main = file_input['main']
-        file_supplement = file_input['supp']
-        print(f'Input File[0] ID: "{file_main}".')
-        path_input.append(Check_Excel_Exist(io_folder_list, file_main))
-        print(f' Input File[1] ID: "{file_supplement}".')
-        path_input.append(Check_Excel_Exist(io_folder_list, file_supplement))
-    except TypeError:
-        print(f'Input File ID: "{file_input}".')
-        path_input.append(Check_Excel_Exist(io_folder_list, file_input))
-
-    file_output = io_file_list[io_state + 1]
-    try:
-        file_output = file_output['main']
-    except TypeError:
-        pass
-    finally:
-        print(f'Output File ID: "{file_output}".')
-        path_output = os.path.join(*io_folder_list, f'{file_output}-{UD.Get_Detailed_Time()}.xlsx')
-        print(path_output)
-
-    return path_input, path_output
 
 
 def get_output_name(path: str, output: str, output_ext: str, prefix: str = '') -> str:
@@ -195,9 +187,9 @@ def delete_similar_outputs(path: str, output: str, output_ext: str, confirm_stri
         if confirm_string in ['Y', 'y', 'Yes', 'yes']:
             for e in delete_list:
                 os.remove(e)
-            print(Style.CAUTION + 'Similar file(s) are DELETED' + Style.ENDD)
+            stylized_print_caution('Similar file(s) are DELETED')
         else:
-            print(Style.CAUTION + 'Similar file(s) are NOT deleted' + Style.ENDD)
+            stylized_print_caution('Similar file(s) are NOT deleted')
 
 
 def check_file_path_exist(path: str, create: bool = True):
@@ -207,43 +199,27 @@ def check_file_path_exist(path: str, create: bool = True):
         print(f'Dir not found, now created: {path}')
 
 
-def get_dict_IO(IO_Workflows: dict, IO_Paths: dict, IO_Params: dict,
-                      script_name: str, script_state: int, prefix='', **kwargs) -> dict or str:
-
-    file_iput = IO_Workflows[script_name][script_state]
-    file_oput = IO_Workflows[script_name][script_state + 1]
-
-    path_iput = {}
-    for s, (k, v) in enumerate(file_iput.items()):
-        name, ext = os.path.splitext(v)
-        print(Style.UDLBLD + f'INPUT file ["{k}"]' + Style.END + f': "{name}" with extension "{ext}".')
-        path_iput[k] = Get_Specific_File_Name(name, ext, IO_Paths[name], compulsory=True)
-        print()
-
-    path_oput = {}
-    for s, (k, v) in enumerate(file_oput.items()):
-        name, ext = os.path.splitext(v)
-        path = IO_Paths[name]
-        print(Style.UDLBLD + f'OUTPUT file ["{k}"]' + Style.END + f': "{name}" with extension "{ext}".')
-        check_file_path_exist(path)
-        oput_join = os.path.join(*path)
-        path_oput[k] = get_output_name(oput_join, name, ext, prefix)
-        print(f'File created: "{get_relative_path(path_oput[k])}"\n')
-        if not builtins.GLOBAL_VERBOSE:
-            print(Style.ITL + f'Builtin Verbose: {builtins.GLOBAL_VERBOSE}' + Style.END)
-        delete_similar_outputs(oput_join, name, ext, builtins.GLOBAL_VERBOSE)
-
-    script_param = IO_Params[script_name]
-    print(Style.UDLBLD + 'Project Parameters' + Style.END + f': "{script_name}" at state "{script_state}" loaded:')
-    pp(script_param, compact=True)
-    print()
-
-    return path_iput, path_oput, script_param
-
-
-def get_relative_path(path, levels=4):
+def get_rel_path(path, levels=4):
     temp = os.path.join(path, *list([os.pardir]*levels))
     return os.path.relpath(path, temp)
+
+
+def verify_pathname(pathname, verify_exist=True, verbose=False):
+    state = True
+    while state:
+        exist = os.path.exists(pathname)
+        state = not exist if verify_exist else exist
+    if verbose:
+        print(f'Verified {pathname} state.\n')
+
+# ----------------------------------------------------------------------------------------------------------------------
+
+class PATHNAME:
+    pass
+# PathLib
+#  status: path find, directory, file etc
+#  find pathname, return pathname, walk thro directory
+
 
 
 if __name__ == '__main__':

@@ -1,5 +1,6 @@
 import pandas as pd
 import util_Path as UP
+import util_Script as US
 import itertools as itt
 import copy
 import inspect
@@ -537,6 +538,7 @@ class DataFrameDict(dict):
 
         with pd.ExcelWriter(path) as writer:
             _ = [v.to_excel(writer, k, merge_cells=merge_cells, header=header, **kwargs) for k, v in temp.items()]
+        UP.verify_pathname(path, verify_exist=True)
 
     def print_heads(self, axis=1, melting=False, silence=True):
         key_List = [*self.keys()]
