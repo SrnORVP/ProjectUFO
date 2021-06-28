@@ -367,7 +367,7 @@ class DataFrameDict(dict):
                 print(f'KeyError: Mapper key "{k}" passed.')
                 continue
 
-    def stack(self, mapper: dict, var_name='variable'):
+    def stack(self, mapper: dict, var_name='variable', dropna=True):
         for k_map, v_map in mapper.items():
             if len(v_map.items()) != 1:
                 print('Warning: "stack" unpivot to 1 column only, multiple unpivot for 1 dataframe is ignored.')
@@ -375,8 +375,12 @@ class DataFrameDict(dict):
             try:
                 val_cols = list(v_map.values())[0]
                 id_cols = list(self[k_map].columns[~self[k_map].columns.isin(val_cols)])
-                self[k_map] = self[k_map].melt(value_vars=val_cols, value_name=list(v_map.keys())[0],
+                value_name = list(v_map.keys())[0]
+                self[k_map] = self[k_map].melt(value_vars=val_cols, value_name=value_name,
                                                id_vars=id_cols, var_name=var_name)
+                if dropna:
+                    isna_series = self[k_map].loc[:, value_name].isna()
+                    self[k_map] = self[k_map][~isna_series]
             except KeyError:
                 print(f'KeyError: Mapper key "{k_map}" passed.')
                 continue
@@ -538,7 +542,7 @@ class DataFrameDict(dict):
 
         with pd.ExcelWriter(path) as writer:
             _ = [v.to_excel(writer, k, merge_cells=merge_cells, header=header, **kwargs) for k, v in temp.items()]
-        UP.verify_pathname(path, verify_exist=True)
+        # UP.verify_pathname(path, verify_exist=True)
 
     def print_heads(self, axis=1, melting=False, silence=True):
         key_List = [*self.keys()]
