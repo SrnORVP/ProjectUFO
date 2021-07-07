@@ -214,13 +214,6 @@ def verify_pathname(pathname, verify_exist=True, verbose=False):
 
 # ----------------------------------------------------------------------------------------------------------------------
 
-class PATHNAME:
-    pass
-# PathLib
-#  status: path find, directory, file etc
-#  find pathname, return pathname, walk thro directory
-
-
 
 if __name__ == '__main__':
     Style().inter_code()

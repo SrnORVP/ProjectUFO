@@ -5,24 +5,28 @@ from pprint import pprint as pp
 import pandas as pd
 import util_Path as UP
 import util_Date as UD
-from util_Sequence import SequenceByteIO as SBI
+from util_PathName import PathName as PN
+from util_Logging import LogWarp as LW
 
 class ScriptSequence:
     EXT = '.xlsx'
     # Tabs
-    SEQ = 'SEQ'
+    INDX = 'INDEX'
     PROC = 'SCRIPT'
     IO_I = 'INPUTS'
     IO_O = 'OUTPUT'
-    SEQ_NUM = 'SEQ_ID'
+    ID_SEQ = 'SEQ_ID'
+    ID_UNIQ = 'UNIQ_ID'
 
     # SEQ Labels
+    SWITCH = 'RUN'
     SEQ_MUTE = ['RUN']
-    SEQ_REPR = ['PROJ_ID', 'FLOW_ID', 'STEP_ID']
-    SEQ_IDX = SEQ_MUTE + SEQ_REPR
+    SEQ_UNIQ = ['PROJ_ID', 'FLOW_ID', 'STEP_ID']
+    SEQ_IDX = SEQ_MUTE + SEQ_UNIQ
     # Other labels
     LITERALs = ['SEQ_ID', 'RUN', 'STEP_ID', 'PARAM']
-    SWITCH = 'RUN'
+    IO_PATH = 'PATH'
+    IO_NAME = 'NAME'
 
     @staticmethod
     def parse_literal_columns(dataframe):
@@ -37,40 +41,17 @@ class ScriptSequence:
             print(e)
             raise ValueError
 
-    def __init__(self, path, name, sequence=dict(), verbose=True):
+    def __init__(self, path, name, verbose=True, log=None):
         self.verbose = verbose
+        self._L = log if log is not None else LW
         self._attr_dict = None
         self._seq = dict()
-        self._path = ''
-        self._name = ''
-        self._pathname = ''
+        self._PN = PN(io='IN', path=path, name=name, ext=self.EXT, verbose=self.verbose)
         self._keys = []
         self._df_keys = []
         self._dict_keys = []
         self.path = path
         self.name = name
-        self.sequence = sequence
-
-    @property
-    def path(self):
-        return self._path
-
-    @property
-    def name(self):
-        return self._name
-
-    @property
-    def pathname(self):
-        return self._pathname
-
-    @path.setter
-    def path(self, value):
-        self._path = value
-
-    @name.setter
-    def name(self, value):
-        temp, _ = os.path.splitext(value)
-        self._name = temp
 
     @property
     def sequence(self):
@@ -79,21 +60,21 @@ class ScriptSequence:
     @sequence.setter
     def sequence(self, value):
         # direct assignment will overwrite loading from path
-        if value and value != self._seq:
-            self._seq = value
+        self._seq = value if value else self._seq
 
     # ------------------------------------------------------------------------------------------------------------------
 
-    def parse_pathname(self):
-        self._pathname = find_pathname(self._name, self.EXT, self._path, verbose=self.verbose)
-
     def parse_source(self):
         # Load from excel for pathname and set attr_dict and index
-        import pandas as pd
         # parse DataFrames from imported by pathname
-        df_dict = pd.read_excel(self._pathname, sheet_name=None, dtype=str, index_col=None)
-        self._attr_dict = {k: self.parse_literal_columns(v) for k, v in df_dict.items()}
-        UP.stylized_print_green('Source file loaded.')
+        import pandas as pd
+        if self._PN.found:
+            df_dict = pd.read_excel(self._PN.pathname, sheet_name=None, dtype=str, index_col=None)
+            self._attr_dict = {k: self.parse_literal_columns(v) for k, v in df_dict.items()}
+            None if not self._L else self._L.bk('Source file loaded.')
+            UP.stylized_print_green('Source file loaded.')
+        else:
+            self._PN.give_error_msg()
 
     # ------------------------------------------------------------------------------------------------------------------
 
@@ -106,29 +87,29 @@ class ScriptSequence:
     def parse_attribute(self):
         # Get attr based on based on attr_name, check if consistent and remove redundant columns
         for attr_name, attr_value in self._attr_dict.items():
-            attr_value = attr_value.set_index(self.SEQ_NUM)
-            self.__setattr__('_df_' + attr_name, attr_value)
+            temp = attr_value.set_index(self.ID_SEQ)
+            self.__setattr__('_df_' + attr_name, temp)
+        None if not self._L else self._L.bk('Attribute loaded.')
         UP.stylized_print_green('Attribute loaded.')
 
     # ------------------------------------------------------------------------------------------------------------------
 
     def parse_index(self):
         for e in self._df_keys:
-            attr_df = self.__dict__[e]
+            attr_df = self.__getattribute__(e)
             if self._safe_init_index(attr_df):
                 attr_df_idx = attr_df.loc[:, self.SEQ_IDX]
-                attr_df_repr = attr_df.loc[:, self.SEQ_REPR].agg(lambda x: x.astype(str).str.cat(sep='\''), axis=1)
-                attr_df_idx = attr_df_idx.assign(REPR_ID=attr_df_repr)
-                self.__setattr__('_df_' + self.SEQ, attr_df_idx)
+                attr_df_idx[self.ID_UNIQ] = attr_df.loc[:, self.SEQ_UNIQ].agg(lambda x: x.astype(str).str.cat(sep='\''), axis=1)
+                self.__setattr__('_df_' + self.INDX, attr_df_idx)
                 self.__setattr__(e, attr_df.drop(columns=self.SEQ_IDX))
 
     def _safe_init_index(self, value):
         try:
-            temp = self.__getattribute__('_df_' + self.SEQ)
+            temp = self.__getattribute__('_df_' + self.INDX)
         except AttributeError:
             temp = None
         if temp is not None:
-            temp = (temp.loc[:, self.SEQ_REPR] == value.loc[:, self.SEQ_REPR])
+            temp = (temp.loc[:, self.SEQ_UNIQ] == value.loc[:, self.SEQ_UNIQ])
             return temp.all().all()
         else:
             return True
@@ -137,11 +118,12 @@ class ScriptSequence:
 
     def parse_dicts(self):
         # get dicts from DataFrames
-        self._attr_dict_simple(self.SEQ)
+        self._attr_dict_simple(self.INDX)
         self._attr_dict_simple(self.PROC)
         self._get_path_dicts(self.IO_I)
         self._get_path_dicts(self.IO_O)
         self._combine_sequence()
+        None if not self._L else self._L.bk('Sequence Mapper loaded.')
         UP.stylized_print_green('Sequence Mapper loaded.')
 
     def _attr_dict_simple(self, attr_df_name):
@@ -163,8 +145,8 @@ class ScriptSequence:
 
     def _combine_sequence(self):
         self._seq = dict()
-        for k, v in self.__getattribute__('_dict_' + self.SEQ).items():
-            self._seq[k] = {self.SEQ: self.__getattribute__('_dict_' + self.SEQ)[k],
+        for k, v in self.__getattribute__('_dict_' + self.INDX).items():
+            self._seq[k] = {self.INDX: self.__getattribute__('_dict_' + self.INDX)[k],
                             self.PROC: self.__getattribute__('_dict_' + self.PROC)[k],
                             self.IO_I: self.__getattribute__('_dict_' + self.IO_I)[k],
                             self.IO_O: self.__getattribute__('_dict_' + self.IO_O)[k]}
@@ -172,7 +154,6 @@ class ScriptSequence:
     # ------------------------------------------------------------------------------------------------------------------
 
     def parse_mapper(self):
-        self.parse_pathname()
         self.parse_source()
         self.parse_attr_keys()
         self.parse_attribute()
@@ -184,7 +165,6 @@ class ScriptSequence:
             UP.stylized_print_cyan(f'SEQUENCE: {k}')
             runtime_object.k = k
             runtime_object.v = v
-            runtime_object.load_runtime()
             runtime_object.execute()
 
     def check_outputs(self):
@@ -196,17 +176,26 @@ class ScriptSequence:
         for k, v in self._seq.items():
             runtime_object.k = k
             runtime_object.v = v
-            runtime_object.load_runtime()
             runtime_object.check_outputs()
 
 
 class ScriptRunTime:
 
-    SEQNUM = 'SEQ_ID'
-    SEQ = 'SEQ'
+    ID_SEQ = 'SEQ_ID'
+    ID_UNIQ = 'UNIQ_ID'
+
+    INDX = 'INDEX'
     PROC = 'SCRIPT'
     IO_I = 'INPUTS'
     IO_O = 'OUTPUT'
+    INDX = '_' + INDX
+    PROC = '_' + PROC
+    IO_I = '_' + IO_I
+    IO_O = '_' + IO_O
+
+    IO_PATH = 'PATH'
+    IO_NAME = 'NAME'
+    IO_PATHNAME = 'PATHNAME'
 
     @staticmethod
     def exec_module(name, path, verbose):
@@ -216,15 +205,15 @@ class ScriptRunTime:
         module = iplu.module_from_spec(spec)
         spec.loader.exec_module(module)
 
-    def __init__(self, module, base_path='', script_path='', specific_flow=None, verbose=True, buffer=True):
+    def __init__(self, module, base_path='', script_path='', specific_flow=None, buffer=None, verbose=True, log=None):
         self.verbose = verbose
-        self.buffer = buffer
-        if self.buffer:
-            self.container = SBI(self.verbose)
+        self._L = log if log is not None else LW
+        if buffer is not None:
+            self.buffered = True
+            self.container = buffer
+        else:
+            self.buffered = False
         self._attr_dict = None
-        self.k = None
-        self.v = None
-        self.REPR_ID = None
         self.MODULE = module
         self.FLOW_ID = specific_flow
         self.BASE_PATH = base_path
@@ -232,7 +221,7 @@ class ScriptRunTime:
 
     @property
     def k(self):
-        return self.SEQ_ID
+        return self.__getattribute__(self.ID_SEQ)
 
     @property
     def v(self):
@@ -240,7 +229,7 @@ class ScriptRunTime:
 
     @k.setter
     def k(self, value):
-        self.SEQ_ID = value
+        self.__setattr__(self.ID_SEQ, value)
 
     @v.setter
     def v(self, value):
@@ -250,10 +239,10 @@ class ScriptRunTime:
 
     def load_runtime(self):
         self._parse_attributes_dict()
-        self._parse_runtime_seq(self.SEQ)
+        self._parse_runtime_seq(self.INDX)
         self._parse_runtime_proc(self.PROC)
-        self._parse_runtime_io_i(self.IO_I)
-        self._parse_runtime_io_o(self.IO_O)
+        self._parse_runtime_io(self.IO_I, 'IO_I')
+        self._parse_runtime_io(self.IO_O, 'IO_O')
 
     def _parse_attributes_dict(self):
         for attr_name, attr_value in self._attr_dict.items():
@@ -261,104 +250,104 @@ class ScriptRunTime:
         self._keys = ['_' + e for e in self._attr_dict.keys()]
 
     def _parse_runtime_seq(self, attr_name):
-        attr_value = self.__getattribute__('_' + attr_name)
-        self.REPR_ID = attr_value['REPR_ID']
-        # attr_value.update({f'REPR_ID': self.REPR_ID})
-        self.__setattr__('_' + attr_name, attr_value)
+        attr_value = self.__getattribute__(attr_name)
+        self.__setattr__(self.ID_UNIQ, attr_value[self.ID_UNIQ])
+        self.__setattr__(attr_name, attr_value)
 
     def _parse_runtime_proc(self, attr_name):
-        attr_value = self.__getattribute__('_' + attr_name)
-        path = attr_value.get('PATH', '')
+        attr_value = self.__getattribute__(attr_name)
+        path = attr_value.get(self.IO_PATH, '')
         if self.SCRIPT_PATH:
-            attr_value['PATH'] = os.path.join(self.SCRIPT_PATH, path)
-        self.__setattr__('_' + attr_name, attr_value)
+            attr_value[self.IO_PATH] = os.path.join(self.SCRIPT_PATH, path)
+        self.__setattr__(attr_name, attr_value)
 
-    def _parse_runtime_io_i(self, attr_name):
-        attr_value = self.__getattribute__('_' + attr_name)
+    def _parse_runtime_io(self, attr_name, io):
+        attr_value = self.__getattribute__(attr_name)
         for k, v in attr_value.items():
-            name, ext = os.path.splitext(v['NAME'])
-            path = v['PATH']
-            if self.BASE_PATH:
-                path = os.path.join(self.BASE_PATH, path)
+            path, name = self._parse_base_path(v, self.BASE_PATH)
             # find the specific file
-            pathname = find_pathname(name, ext, path, verbose=self.verbose)
-            if pathname:
-                UP.stylized_print_section(f'INPUT file ["{k}"]', f': "{UP.get_rel_path(pathname, 3)}".')
-            else:
-                UP.stylized_print_caution(f'INPUT file ["{k}"] not found')
-            attr_value[k].update({'PATH_NAME': pathname})
-            if self.buffer:
-                self._buffer_pathname(attr_value[k])
-        self.__setattr__('_' + attr_name, attr_value)
+            obj_pn = PN(io=io, path=path, name=name, suffix=self.UNIQ_ID, regex_hint=self.UNIQ_ID, verbose=self.verbose)
+            if self.buffered:
+                obj_pn.set_pathname_walker('SequenceByteIO', self.container)
+            pathname = obj_pn.pathname
+            obj_pn.force_unique(1)
+            self._L.wt(f'{io}: {obj_pn.count} ea. of "{obj_pn.name}{obj_pn.ext}" at "{obj_pn.relpath}"')
+            self._L.wt(f'{io}: Concrete pathname: {obj_pn._relpath(obj_pn.pathname, 4)}')
+            if self.verbose:
+                if obj_pn.found:
+                    UP.stylized_print_section(f'{io} file ["{k}"]', f': "{obj_pn.relpath}".')
+                else:
+                    UP.stylized_print_caution(f'{io} file ["{k}"] not found')
 
-    def _parse_runtime_io_o(self, attr_name):
-        attr_value = self.__getattribute__('_' + attr_name)
-        for k, v in attr_value.items():
-            name, ext = os.path.splitext(v['NAME'])
-            path = v['PATH']
-            if self.BASE_PATH:
-                path = os.path.join(self.BASE_PATH, path)
-            # parse pathname from NAME and PATH, create directory if need
-            pathname = force_pathname(path, name, ext, self.REPR_ID)
-            if pathname:
-                UP.stylized_print_section(f'OUTPUT file ["{k}"]', f': "{UP.get_rel_path(pathname, 3)}".')
-            else:
-                UP.stylized_print_caution(f'OUTPUT file ["{k}"] not found')
-            # delete if output file exist
-            pathname_list = find_pathname(name, ext, path, return_list=True, verbose=self.verbose)
-            if len(pathname_list) > 1:
-                pathname_list = pathname_list[1:]
-                remove_pathnames(pathname_list, self.verbose)
-            attr_value[k].update({'PATH_NAME': pathname})
-            if self.buffer:
-                self._buffer_pathname(attr_value[k])
-        self.__setattr__('_' + attr_name, attr_value)
+            attr_value[k].update({self.IO_PATHNAME: pathname})
+            if self.buffered:
+                self._buffer_override_pathname(attr_value[k])
+        self.__setattr__(attr_name, attr_value)
 
-    def _buffer_pathname(self, pathname_container):
-        self.container.byteio_override(pathname_container, 'PATH_NAME')
+    def _parse_base_path(self, input_dict, base_path):
+        path = input_dict[self.IO_PATH]
+        name = input_dict[self.IO_NAME]
+        if not os.path.isdir(path):
+            path = os.path.join(base_path, path)
+        return path, name
+
+    def _buffer_override_pathname(self, pathname_container):
+        self.container.byteio_override(pathname_container, self.IO_PATHNAME)
 
     def execute(self):
+        self.load_runtime()
         temp = self.__dict__
-        self.MODULE.PROJ_PARAMS = temp['_' + self.PROC]['PARAM']
-        self.MODULE.PROJ_INPUTS = temp['_' + self.IO_I]
-        self.MODULE.PROJ_OUTPUT = temp['_' + self.IO_O]
-        name = temp['_' + self.PROC]['NAME']
-        path = temp['_' + self.PROC]['PATH']
-        if self.verbose:
-            print(UP.Style.UDLBLD + 'Listing script param(s)' + UP.Style.END + ':')
-            pp(temp['_' + self.PROC]['PARAM'])
-            print()
-        check_flow = temp['_' + self.SEQ]['FLOW_ID']
-        check_run = temp['_' + self.SEQ]['RUN']
+        check_flow = temp[self.INDX]['FLOW_ID']
+        check_run = temp[self.INDX]['RUN']
         if check_run and (not self.FLOW_ID or self.FLOW_ID == check_flow):
-            UP.stylized_print_blue(f'"{self.REPR_ID}: {name}" Start')
-            ScriptRunTime.exec_module(name, path, self.verbose)
-            UP.stylized_print_blue(f'"{self.REPR_ID}: {name}" Done')
+            self.MODULE.PROJ_PARAMS = temp[self.PROC]['PARAM']
+            self.MODULE.PROJ_INPUTS = temp[self.IO_I]
+            self.MODULE.PROJ_OUTPUT = temp[self.IO_O]
+            if self.verbose:
+                print(UP.Style.UDLBLD + 'Listing script param(s)' + UP.Style.END + ':')
+                pp(temp[self.PROC]['PARAM'])
+                print()
+            name = temp[self.PROC][self.IO_NAME]
+            repr_sequence = f'{self.k}: "{self.__getattribute__(self.ID_UNIQ)}: {name}"'
+            self._L.bk(repr_sequence)
+            UP.stylized_print_blue(f'{repr_sequence}" Start')
+            ScriptRunTime.exec_module(name, temp[self.PROC][self.IO_PATH], self.verbose)
+            self._L.nl()
+            UP.stylized_print_blue(f'{repr_sequence}" End')
 
     def check_outputs(self):
+        self.load_runtime()
         temp = self.__dict__
-        check_flow = temp['_' + self.SEQ]['FLOW_ID']
-        check_run = temp['_' + self.SEQ]['RUN']
+        check_flow = temp[self.INDX]['FLOW_ID']
+        check_run = temp[self.INDX]['RUN']
         if check_run and (not self.FLOW_ID or self.FLOW_ID == check_flow):
-            UP.stylized_print_blue(f'SEQUENCE ID: {self.SEQ_ID}')
+            name = temp[self.PROC][self.IO_NAME]
+            repr_sequence = f'{self.k}: "{self.__getattribute__(self.ID_UNIQ)}: {name}"'
+            self._L.bk(repr_sequence)
+            UP.stylized_print_blue(f'{repr_sequence}" Start')
             print('Sequence')
-            pp(temp['_' + self.SEQ])
+            pp(temp[self.INDX])
             print('\nProcess')
-            pp(temp['_' + self.PROC])
+            pp(temp[self.PROC])
             print('\nInput')
-            pp(temp['_' + self.IO_I])
+            pp(temp[self.IO_I])
             print('\nOutput')
-            pp(temp['_' + self.IO_O])
+            pp(temp[self.IO_O])
             print()
+            # if self.buffered:
+            #     print(self.container)
+            self._L.nl()
+            UP.stylized_print_blue(f'{repr_sequence}" Done')
 
 
 def find_pathname(name_target, ext_target, path_target='.', regex_hint=None, return_list=False, verbose=True):
-    """
-    Find, in os.path.cwd or in specified PATH, a single PATHNAME as concrete matched by NAME and EXT.
-    List of PATHNAME can be returned, if return_list is flagged.
-    Hint in regex can be provided for additional filter.
-    Tuple of (matched_flag, PATHNAME/ List of PATHNAME/ None) is returned
-    """
+    pass
+    # """
+    # Find, in os.path.cwd or in specified PATH, a single PATHNAME as concrete matched by NAME and EXT.
+    # List of PATHNAME can be returned, if return_list is flagged.
+    # Hint in regex can be provided for additional filter.
+    # PATHNAME or List of PATHNAME or None is returned
+    # """
     paths = []
     ctime = []
     hint_str = f' with "{regex_hint}"' if regex_hint else ''
@@ -369,8 +358,6 @@ def find_pathname(name_target, ext_target, path_target='.', regex_hint=None, ret
                 paths.append(os.path.join(path_target, path))
                 ctime.append(os.path.getctime(os.path.join(path_target, path)))
     paths.sort(key=os.path.getctime, reverse=True)
-
-    print(paths)
 
     if return_list:
         return_value = paths
@@ -386,21 +373,50 @@ def find_pathname(name_target, ext_target, path_target='.', regex_hint=None, ret
     return return_value
 
 
+def find_pathname_dict(name_target, ext_target, pathname_dict, regex_hint=None, verbose=True):
+    pass
+    # """
+    # Find, in specified dictionary, a single PATHNAME as concrete matched by NAME and EXT.
+    # List of PATHNAME can be returned, if return_list is flagged.
+    # Hint in regex can be provided for additional filter.
+    # PATHNAME or None or False is returned
+    # """
+    # paths = []
+    # hint_str = f' with "{regex_hint}"' if regex_hint else ''
+    # for path in pathname_dict.keys():
+    #     name, ext = os.path.splitext(path)
+    #     if name_target in name and ext == ext_target and '~' not in name:
+    #         if not regex_hint or (regex_hint and re.search(regex_hint, name)):
+    #             paths.append(path)
+    #
+    # if len(paths) > 1:
+    #     return_value = False
+    # elif len(paths) == 0:
+    #     return_value = None
+    # else:
+    #     return_value = paths[0]
+    # if verbose:
+    #     print(f'Found {len(paths)} ea. of {name_target}{ext_target}{hint_str} in dictionary.\n')
+    # return return_value
+
+
 def force_pathname(path, name, ext, suffix=None):
-    if not os.path.exists(path):
-        os.mkdir(path)
-        print(f'Directory not found, now created: {path}')
-    suffix = suffix + '-' if suffix else None
-    return os.path.join(path, f'{suffix}{name}-{UD.Get_Detailed_Time()}{ext}')
+    pass
+    # if not os.path.exists(path):
+    #     os.mkdir(path)
+    #     print(f'Directory not found, now created: {path}')
+    # suffix = suffix + '-' if suffix else None
+    # return os.path.join(path, f'{suffix}{name}-{UD.Get_Detailed_Time()}{ext}')
 
 
 def remove_pathnames(pathname_list, verbose=False):
-    if verbose:
-        print(UP.Style.UDLBLD + 'Listing similar file(s)' + UP.Style.END + ':')
-        pp(pathname_list, width=200)
-
-    for e in pathname_list:
-        if os.path.isfile(e):
-            os.remove(e)
-    UP.stylized_print_caution('Similar file(s) are DELETED')
+    pass
+    # if verbose:
+    #     print(UP.Style.UDLBLD + 'Listing similar file(s)' + UP.Style.END + ':')
+    #     pp(pathname_list, width=200)
+    #
+    # for e in pathname_list:
+    #     if os.path.isfile(e):
+    #         os.remove(e)
+    # UP.stylized_print_caution('Similar file(s) are DELETED')
 
