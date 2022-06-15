@@ -1,6 +1,7 @@
-import os, sys, re
+import os
+import re
+import sys
 from pprint import pprint as pp
-import builtins
 
 
 class Style:
@@ -46,23 +47,23 @@ class Style:
 
 
 def stylized_print_black(string_input: str):
-    print(Style.BGD_WHT + Style.BLACK + f' {string_input} '.center(Style.COUNT, Style.FILL) + Style.ENDD)
+    print(Style.BGD_BLK + Style.BLACK + f' {string_input} '.center(Style.COUNT, Style.FILL) + Style.ENDD)
 
 
 def stylized_print_caution(string_input: str):
-    print(Style.BGD_WHT + Style.CAUTION + f' {string_input} '.center(Style.COUNT, Style.FILL) + Style.ENDD)
+    print(Style.BGD_BLK + Style.CAUTION + f' {string_input} '.center(Style.COUNT, Style.FILL) + Style.ENDD)
 
 
 def stylized_print_green(string_input: str):
-    print(Style.BGD_WHT + Style.DARKGREEN + f' {string_input} '.center(Style.COUNT, Style.FILL) + Style.ENDD)
+    print(Style.BGD_BLK + Style.DARKGREEN + f' {string_input} '.center(Style.COUNT, Style.FILL) + Style.ENDD)
 
 
 def stylized_print_cyan(string_input: str):
-    print(Style.BGD_WHT + Style.DARKCYAN + f' {string_input} '.center(Style.COUNT, Style.FILL) + Style.ENDD)
+    print(Style.BGD_BLK + Style.DARKCYAN + f' {string_input} '.center(Style.COUNT, Style.FILL) + Style.ENDD)
 
 
 def stylized_print_blue(string_input: str):
-    print(Style.BGD_WHT + Style.DARKBLUE + f' {string_input} '.center(Style.COUNT, Style.FILL) + Style.ENDD)
+    print(Style.BGD_BLK + Style.DARKBLUE + f' {string_input} '.center(Style.COUNT, Style.FILL) + Style.ENDD)
 
 
 def stylized_print_section(string_input1: str, string_input2: str):

@@ -1,7 +1,8 @@
 import io
 from pprint import pprint as pp
-from util_Logging import LogWarp as LW
+
 import util_Path as UP
+from util_Logging import LogWarp as LW
 
 
 class ContainerIO:
@@ -34,12 +35,16 @@ class ContainerIO:
 
     def save_streams(self):
         for k, v in self.container.items():
-            with open(k, 'wb') as file:
-                file.write(v.getbuffer())
-                repr_string = f'ByteIO "{hex(id(v))}" saved to disk at "{UP.get_rel_path(k, 4)}.'
+            if v.getvalue() != b'':
+                with open(k, 'wb') as file:
+                    file.write(v.getbuffer())
+                    repr_string = f'ByteIO "{hex(id(v))}" saved --> "{UP.get_rel_path(k, 4)}".'
+                    LW.wt(repr_string)
+                    print(repr_string) if self.verbose else None
+            else:
+                repr_string = f'ByteIO "{hex(id(v))}" _null --> "{UP.get_rel_path(k, 4)}".'
                 LW.wt(repr_string)
-                if self.verbose:
-                    print(repr_string)
+                print(repr_string) if self.verbose else None
 
     def byteio_override(self, pathname_container, key):
         verbose = self.verbose

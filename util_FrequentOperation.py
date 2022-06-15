@@ -1,9 +1,8 @@
-import pandas as pd
-import util_Path as UP
-import util_Script as US
-import itertools as itt
 import copy
 import inspect
+import itertools as itt
+import pandas as pd
+import util_Path as UP
 
 
 class MapperCreator:
@@ -58,6 +57,9 @@ class MapperCreator:
         if self._has_default:
             repr_string += f', Def: {self.dflt}'
         return repr_string
+
+    def show(self):
+        print(repr(self))
 
     def restore(self):
         self.__init__(self._df_hidden)
@@ -134,10 +136,9 @@ class MapperCreator:
         else:
             return {k: df[self.key].to_list() for k, df in self.df.groupby(self.tab, sort=False)}
 
-    def default_value_mapper(self):
+    def default_mapper(self):
         temp_df = self.df[~self.df[self.dflt].isna()]
-        return {key: temp_df.set_index(self.key).to_dict()[self.dflt]
-                for key, df in temp_df.groupby(self.tab, sort=False)}
+        return {k: df.set_index(self.key).to_dict()[self.dflt] for k, df in temp_df.groupby(self.tab, sort=False)}
 
     def stack_mapper(self):
         temp_df = self.df[~self.df[self.stck].isna()]
@@ -148,117 +149,6 @@ class MapperCreator:
 
     def reindex_list(self):
         return [*{k: None for k in self[self.val].to_list()}.keys()]
-
-
-class SeqMapperCreator:
-    """
-        Default ID is provided for 'seq_col', 'tab_col'
-    """
-    REPR_COUNT = 5
-    TYPES = {
-            'merge': {'actor_col': 'on'}
-    # 'operation': pd.DataFrame.merge
-    }
-
-    def __init__(self, dataframe: pd.DataFrame, **kwargs):
-        """
-            'seq_col': sequential number of the entry
-            'type_col': string identifier of the type of operation (i.e. merge, sort etc)
-
-            'tab_col': the name of the output tab
-            'main_col': the name of the main input tab
-            'supp_col': the name of the supp input tab
-
-            Hidden cols
-            'actor_cols': the argument name associated with the operation
-            'kwargs_cols': other keyword arguments (i.e. those not in 'actor_col') for the operation
-
-            Default ID is provided for 'seq_col', 'tab_col'
-        """
-        # # , 'main_col', 'supp_col', 'indicate_col'
-        self.df = dataframe
-        self._df_hidden = dataframe
-        self.verbose = int(kwargs.setdefault('verbose', 0))
-        self.seq = kwargs.setdefault('seq_col', 'intSeq')
-        self.tab = kwargs.setdefault('tab_col', 'strTab')
-        self.main = kwargs.setdefault('main_col', 'strMain')
-        self.supp = kwargs.setdefault('supp_col', 'strSupp')
-        self.type = kwargs.setdefault('type_col', 'strType')
-
-        self._sequence_cols = [self.seq, self.tab]
-        self._source_cols = [self.main, self.supp]
-        self._identity_cols = [*self._sequence_cols, *self._source_cols, self.type]
-        self._actor_cols = self._get_actor_cols_labels()
-        self._kwargs_cols = self._get_param_cols_labels()
-
-        self._validate_input()
-        self._check_keys()
-
-        self.df = self.df.sort_values(self.seq)
-
-    def __repr__(self):
-        if self.verbose:
-            temp = self.df.head(self.verbose)
-        else:
-            temp = self.df.sample(SeqMapperCreator.REPR_COUNT).sort_index()
-
-        try:
-            display(temp)
-        except:
-            print(temp)
-        return self.__str__()
-
-    def __str__(self):
-        repr_string = f'Sequential: "{self.seq}", Operation Type: "{self.type}"\n' \
-                      + f'Main: "{self.main}", Supp: "{self.supp}", Output: "{self.tab}"\n' \
-                      + f'Actors: "{self._actor_cols.to_list()}"\n' \
-                      + f'Keywords: "{self._kwargs_cols.to_list()}"\n'
-        return repr_string
-
-    def restore(self):
-        self.__init__(self._df_hidden)
-        print('Mapper restored to initial state.')
-
-    def _validate_input(self):
-        for e in self._identity_cols:
-            assert e in self.df.columns, f'ID "{e}" not found.'
-
-    def _check_keys(self):
-        temp = self.df.loc[:, self._identity_cols].duplicated(keep=False)
-        if temp.any():
-            print(f'Warning: Duplicates found in Mapper Keys.')
-            if self.verbose:
-                print(f'\n{self.df.loc[:, self._identity_cols][temp]}')
-
-    def _get_actor_cols_labels(self):
-        temp = pd.to_numeric(self.df.columns, errors='coerce')
-        return temp[~temp.isna()].astype(int)
-
-    def _get_param_cols_labels(self):
-        temp = [*self._identity_cols, *self._actor_cols]
-        return self.df.columns[~self.df.columns.isin(temp)]
-
-    def seq_mapper(self):
-
-        def _parse_actor_dict(series, type_key):
-            actor_string = SeqMapperCreator.TYPES[type_key]['actor_col']
-            actor_list = series.reindex(self._actor_cols).dropna().to_list()
-            return {actor_string: actor_list}
-
-        def _parse_kwargs_dict(series):
-            return series.reindex(self._kwargs_cols).dropna().to_dict()
-
-        temp = {}
-        for k, series in self.df.set_index(self.seq).iterrows():
-            series = series.dropna()
-            output = series.loc[[self.tab]].to_dict()
-            sources = series.loc[self._source_cols].to_dict()
-            oper_type = series.loc[self.type]
-            actors = _parse_actor_dict(series, oper_type)
-            kwargs = _parse_kwargs_dict(series)
-            temp[k] = {'sources': sources, 'output': output, 'type': oper_type,
-                       'kwargs': kwargs, 'actors': actors}
-        return temp
 
 
 class SubsetMapperCreator(MapperCreator):
@@ -278,8 +168,7 @@ class SubsetMapperCreator(MapperCreator):
             self._have_idx = True
             self._remove_idx()
         except KeyError:
-            pass
-
+            self.idx = None
 
     def __repr__(self):
         super().__repr__()
@@ -310,25 +199,64 @@ class SubsetMapperCreator(MapperCreator):
             temp = None
         return temp
 
+    def simple_subset_mapper(self):
+        return self.df_sub.to_dict('index')
+
 
 class DataFrameDict(dict):
 
+    @staticmethod
+    def get_rolling_count(input_df, column=None, use_index=False):
+        if use_index:
+            target_series = pd.Series(input_df.index)
+        else:
+            target_series = pd.Series(input_df[column])
+        return tuple(str(x.value_counts()[x.iloc[-1]]) for idx, x in enumerate(target_series.expanding()))
+
     def __init__(self, *args, **kwargs):
+        init_by = kwargs.pop('init_by') if 'init_by' in kwargs.keys() else []
+        init_include = kwargs.pop('init_include') if 'init_include' in kwargs.keys() else False
+        init_silence = kwargs.pop('init_silence') if 'init_silence' in kwargs.keys() else True
         super().__init__(*args, **kwargs)
-        # [print(type(v)) for k, v in self.items()]
-        # print({k: True if type(v) in ['str', 'int', 'float'] else False for k, v in self.items()})
-        self.isFilled = all({k: True if type(v) in ['str', 'int', 'float'] else False
-                             for k, v in self.items()}.values())
-        if self.isFilled and self:
-            print(f'DataFrameDict initiated with {self}.\n')
+        if len(self.keys()) > 1:
+            self._init_filter(init_by, init_include)
+        print(f'DFD contains: {[*self.keys()]}\n') if not init_silence else None
+        self.isFilled = all([True if type(v) in ['str', 'int', 'float'] else False for v in self.values()])
+        print(f'DataFrameDict initiated with {self}.\n') if self.isFilled and self else None
 
     # TODO just need to reset the index to ensure index is not duplicated
     def _check_idx(self):
         pass
 
+    def _init_filter(self, by, include=True):
+        original_keys = set(self.keys())
+        if not by:
+            by = original_keys
+            include = True
+        retain_targets = list(original_keys.intersection(by) if include else original_keys.difference(by))
+        for e in original_keys:
+            if e not in retain_targets:
+                self.pop(e)
+        assert len(self.keys()) > 0, 'No tabs in excel is selected, check "subset_sheets" and associate params.'
+
     @property
     def shape(self):
-        return pd.DataFrame({k: v.shape for k, v in self.items()}).T
+        shape_dict = {}
+        for k, v in self.items():
+            if isinstance(v, pd.DataFrame):
+                shape = v.shape
+            elif isinstance(v, pd.Series):
+                shape = (v.shape[0], 1)
+            else:
+                shape = (0, 0)
+            shape_dict[k] = shape
+        return pd.DataFrame(shape_dict).T
+
+    def total_shape(self, axis=0):
+        if axis == 0:
+            return self.shape[0].sum(), max(self.shape[1])
+        else:
+            return max(self.shape[0]), self.shape[1].sum()
 
     def sort(self):
         return DataFrameDict({k: self[k] for k in sorted(self.keys())})
@@ -440,6 +368,31 @@ class DataFrameDict(dict):
         for k in set(self.keys()).difference(set(mapper.keys())):
             del self[k]
 
+    # TODO need to standardise mapper columns
+    def simple_subset(self, mapper: dict, fill_default=False) -> dict:
+        """
+        strTab: old tab name, strSub: new tab name, strKey: old col name, strVal: new col name
+        if fill_default: , strKey: new col name, strVal: value in the column
+        """
+        not_found = []
+        new_dict = {}
+        for e in mapper.values():
+            try:
+                new_dict.setdefault(e['strSub'], pd.DataFrame())
+                # Get number of columns, to insert at the end of all columns
+                end_col_idx = new_dict[e['strSub']].shape[1]
+
+                if fill_default and not (e['strKey'] in self[e['strTab']].columns):
+                    new_dict[e['strSub']].insert(end_col_idx, e['strKey'], e['strVal'], True)
+                else:
+                    new_dict[e['strSub']].insert(end_col_idx, e['strVal'], self[e['strTab']][e['strKey']], True)
+            except KeyError:
+                not_found.append(e)
+        if not_found:
+            print(f'Warning: The following are not found: {not_found}')
+        output_dict = new_dict.copy()
+        return output_dict.copy()
+
     def split_n_stack(self, index_col: str, split_col_target: str, split_col_name: str, stack_col_name: str):
         for k, v in self.items():
             try:
@@ -474,6 +427,24 @@ class DataFrameDict(dict):
             temp = temp.drop_duplicates().reset_index(drop=True)
             self.update({output: temp})
 
+    def dropna(self, **kwargs):
+        for k, v in self.items():
+            try:
+                self[k] = v.dropna(**kwargs)
+            except KeyError:
+                print(f'KeyError: Dict key "{k}" passed.')
+                continue
+
+    def append(self, have_keys=False, **kwargs):
+        if have_keys:
+            keys = self.keys()
+        else:
+            keys = None
+        temp = pd.concat(self.values(), keys=keys, **kwargs)
+        if have_keys:
+            temp = temp.reset_index(level=0).rename({'level_0': 'Keys'})
+        self['Append'] = temp.sort_index()
+
     # TODO
     def organise_index(self, index_col: list = None, reset_index: bool = True, drop_reset: bool = True, **kwargs):
         for k in self.keys():
@@ -488,7 +459,8 @@ class DataFrameDict(dict):
             except KeyError:
                 continue
 
-    def iter_func(self, func, axis=None, sheets=None, labels=None, verbose=False, *args, **kwargs):
+    def iter_func(self, func, axis=None, sheets: list = None, labels: list = None, verbose: bool = False,
+                  *args, **kwargs):
         if verbose:
             string_kwargs = kwargs if kwargs else 'No kwargs'
             print(f'Applying func "{func.__name__}" on DataFrameDict with "{string_kwargs}"')
@@ -531,20 +503,43 @@ class DataFrameDict(dict):
                     continue
         return inner
 
-    def export_excel(self, path: str, merge_cells=True, header=True, **kwargs):
-        temp = {k: v for k, v in self.items()}
+    def check_unique(self, column_filter, excluded_tabs=None):
+        dictUniq = {k: df.filter(regex=column_filter, axis=1).rename(lambda x: 'Unique', axis=1)
+                    for k, df in self.items() if k not in excluded_tabs}
+        dfUnique = pd.concat(dictUniq, axis=0).droplevel(-1)
+        dfNotUnique = dfUnique[dfUnique.duplicated(keep=False)]
+        return dfNotUnique
+
+    def check_columns_diff(self, main_col_filter, supp_col_filter, main_col_name='Main', supp_col_name='Supp',
+                           main_excl_tabs=None, supp_excl_tabs=None):
+        dictMain = {k: df.filter(regex=main_col_filter, axis=1).rename(lambda x: main_col_name, axis=1)
+                    for k, df in self.items() if k not in main_excl_tabs}
+        dictSupp = {k: df.filter(regex=supp_col_filter, axis=1).rename(lambda x: supp_col_name, axis=1)
+                    for k, df in self.items() if k not in supp_excl_tabs}
+        dfMain = pd.concat(dictMain, names=None, axis=0).droplevel(-1).drop_duplicates()
+        dfSupp = pd.concat(dictSupp, names=None, axis=0).droplevel(-1).drop_duplicates()
+        dfMerge = dfMain.merge(dfSupp, left_on=main_col_name, right_on=supp_col_name, how='left', indicator=True)
+        return dfMerge[dfMerge['_merge'] != 'both']
+
+    def export_excel(self, path: str, merge_cells=True, header=True, na_rep='N/A', **kwargs):
+        temp_list = self.shape.index[self.shape[0] != 0]
+        repr_list = self.shape.index[self.shape[0] == 0]
+        # print(temp_list)
+        temp = {k: v for k, v in self.items() if k in temp_list}
+        if len(repr_list) > 0:
+            print(f'{repr_list} are empty.')
 
         if not merge_cells:
             header = False
-            for k, v in self.items():
+            for k, v in temp.items():
                 v.columns.names = ['col_' + str(e) for e in v.columns.names]
                 temp[k] = v.T.reset_index().T
 
         with pd.ExcelWriter(path) as writer:
-            _ = [v.to_excel(writer, k, merge_cells=merge_cells, header=header, **kwargs) for k, v in temp.items()]
+            _ = [v.to_excel(writer, k, merge_cells=merge_cells, header=header, na_rep=na_rep, **kwargs) for k, v in temp.items()]
         # UP.verify_pathname(path, verify_exist=True)
 
-    def print_heads(self, axis=1, melting=False, silence=True):
+    def print_heads(self, verbose=False, axis=1, melting=False):
         key_List = [*self.keys()]
 
         def zip_longest_head(head_generator):
@@ -561,8 +556,11 @@ class DataFrameDict(dict):
             temp = zip_longest_head((v.columns.to_list() for v in self.values())).T
         if melting:
             temp = temp.stack().reset_index()
-        if not silence:
-            display(temp)
+        if verbose:
+            try:
+                display(temp)
+            except NameError:
+                print(temp)
         return temp
 
     def idisplay(self):
@@ -678,5 +676,3 @@ def export_dictDataFrame_AsExcel(strPath, dictDFs, **kwargs):
 def reindex_dictDataFrames(dictMapper, lstDFs):
     print('to be removed')
     # return {key: df.reindex(columns=dictMapper[key]) for key, df in zip(dictMapper.keys(), lstDFs)}
-
-
